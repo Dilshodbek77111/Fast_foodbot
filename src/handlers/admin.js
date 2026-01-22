@@ -4,11 +4,10 @@ const Product = require('../models/Product');
 module.exports = (bot) => {
   console.log('✅ Admin handler yuklandi');
 
-  // Har bir admin uchun vaqtinchalik ma'lumotlar
-  const adminTempData = new Map(); // chatId -> {name, price, step}
+  
+  const adminTempData = new Map(); 
 
-  // Admin menyu
-  const adminMenu = {
+   const adminMenu = {
     reply_markup: {
       keyboard: [
         [{ text: '➕ Yangi mahsulot' }, { text: '🗑 Mahsulot o\'chirish' }],
@@ -26,7 +25,7 @@ module.exports = (bot) => {
     }
   };
 
-  // ==================== YANGI MAHSULOT QO'SHISH ====================
+  
   bot.onText(/➕ Yangi mahsulot/, async (msg) => {
     const chatId = msg.chat.id;
     
@@ -38,7 +37,7 @@ module.exports = (bot) => {
         return bot.sendMessage(chatId, '⚠️ Admin emas!');
       }
       
-      // Map da yangi ma'lumotlar
+      
       adminTempData.set(chatId, {
         step: 'name',
         name: '',
@@ -58,17 +57,16 @@ module.exports = (bot) => {
     }
   });
 
-  // ==================== BEKOR QILISH ====================
+  
   bot.onText(/❌ Bekor qilish/, async (msg) => {
     const chatId = msg.chat.id;
     
     try {
       console.log(`🚫 Bekor qilish: ${chatId}`);
       
-      // Map dan ma'lumotlarni o'chirish
+      
       adminTempData.delete(chatId);
       
-      // User holatini tozalash
       const user = await User.findOne({ telegramId: chatId });
       if (user) {
         user.state = '';
@@ -83,12 +81,12 @@ module.exports = (bot) => {
     }
   });
 
-  // ==================== ASOSIY MENYU ====================
+  
   bot.onText(/⬅️ Asosiy menyu/, async (msg) => {
     const chatId = msg.chat.id;
     
     try {
-      // Map dan ma'lumotlarni o'chirish
+      
       adminTempData.delete(chatId);
       
       bot.sendMessage(chatId, 'Asosiy menyuga qaytdingiz.', {
@@ -106,7 +104,7 @@ module.exports = (bot) => {
     }
   });
 
-  // ==================== MESSAGE HANDLER ====================
+  
   bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
@@ -119,11 +117,11 @@ module.exports = (bot) => {
       
       console.log(`\n📨 Admin xabari: "${text}"`);
       
-      // Map dan ma'lumotlarni olish
+      
       const tempData = adminTempData.get(chatId);
       console.log('Map tempData:', tempData);
       
-      // 1. NOM QABUL QILISH
+      
       if (tempData && tempData.step === 'name') {
         console.log(`📝 Nom qabul qilinmoqda...`);
         
@@ -131,7 +129,7 @@ module.exports = (bot) => {
           return bot.sendMessage(chatId, '❌ Nom kamida 2 belgi bo\'lishi kerak!');
         }
         
-        // Map ni yangilash
+      
         tempData.name = text.trim();
         tempData.step = 'price';
         adminTempData.set(chatId, tempData);
@@ -144,7 +142,7 @@ module.exports = (bot) => {
         );
       }
       
-      // 2. NARX QABUL QILISH
+      
       else if (tempData && tempData.step === 'price') {
         console.log(`💰 Narx qabul qilinmoqda...`);
         
@@ -154,7 +152,7 @@ module.exports = (bot) => {
           return bot.sendMessage(chatId, '❌ Iltimos, to\'g\'ri narx kiriting!');
         }
         
-        // Map ni yangilash
+        
         tempData.price = price;
         tempData.step = 'image';
         adminTempData.set(chatId, tempData);
@@ -174,7 +172,7 @@ module.exports = (bot) => {
     }
   });
 
-  // ==================== RASM QABUL QILISH ====================
+  
   bot.on('photo', async (msg) => {
     const chatId = msg.chat.id;
     
@@ -184,7 +182,7 @@ module.exports = (bot) => {
       const user = await User.findOne({ telegramId: chatId });
       if (!user || !user.isAdmin) return;
       
-      // Map dan ma'lumotlarni olish
+      
       const tempData = adminTempData.get(chatId);
       console.log('Rasm uchun Map ma\'lumotlari:', tempData);
       
@@ -193,7 +191,7 @@ module.exports = (bot) => {
         return;
       }
       
-      // Ma'lumotlarni tekshirish
+      
       if (!tempData.name || !tempData.price) {
         console.log('❌ Ma\'lumotlar yetishmayapti');
         adminTempData.delete(chatId);
@@ -203,13 +201,13 @@ module.exports = (bot) => {
         );
       }
       
-      // Rasmni olish
+      
       const photo = msg.photo[msg.photo.length - 1];
       const fileId = photo.file_id;
       
       console.log(`✅ Rasm fileId: ${fileId}`);
       
-      // MAHSULOT YARATISH
+      
       try {
         const productData = {
           name: tempData.name,
@@ -225,14 +223,14 @@ module.exports = (bot) => {
         
         console.log('✅ Mahsulot saqlandi:', savedProduct._id);
         
-        // NATIJANI KO'RSATISH
+        
         const response = `✅ MAHSULOT SAQLANDI!\n\nNomi: ${savedProduct.name}\nNarxi: ${savedProduct.price} so'm`;
         
         await bot.sendPhoto(chatId, savedProduct.imageId, { 
           caption: response 
         });
         
-        // Map dan ma'lumotlarni o'chirish
+        
         adminTempData.delete(chatId);
         
         await bot.sendMessage(chatId, 
@@ -256,7 +254,7 @@ module.exports = (bot) => {
         
         bot.sendMessage(chatId, errorMessage, adminMenu);
         
-        // Map ni tozalash
+        
         adminTempData.delete(chatId);
       }
       
@@ -266,7 +264,7 @@ module.exports = (bot) => {
     }
   });
 
-  // ==================== MAHSULOT O'CHIRISH ====================
+  
   bot.onText(/🗑 Mahsulot o\'chirish/, async (msg) => {
     const chatId = msg.chat.id;
     
@@ -295,7 +293,7 @@ module.exports = (bot) => {
     }
   });
 
-  // ==================== CALLBACK QUERY ====================
+ 
   bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const data = callbackQuery.data;

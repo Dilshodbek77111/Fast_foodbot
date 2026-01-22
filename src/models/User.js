@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema({
     default: ''
   },
   tempData: {
-    type: mongoose.Schema.Types.Mixed, // 🔴 Har qanday turdagi ma'lumot
+    type: mongoose.Schema.Types.Mixed, 
     default: null
   }
 }, {
