@@ -1,29 +1,30 @@
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
-  telegramId: {
-    type: Number,
-    required: true,
-    unique: true
+  telegramId: { 
+    type: Number, 
+    required: true, 
+    unique: true 
   },
   firstName: String,
   username: String,
   phone: String,
-  isAdmin: {
-    type: Boolean,
-    default: false
+  isAdmin: { 
+    type: Boolean, 
+    default: false 
   },
-  cart: [{
-    productId: String,
-    name: String,
-    price: Number,
-    quantity: {
-      type: Number,
-      default: 1
-    }
-  }],
-  state: String,
-  tempData: Object
+  cart: {
+    type: Array,
+    default: []
+  },
+  state: {
+    type: String,
+    default: ''
+  },
+  tempData: {
+    type: mongoose.Schema.Types.Mixed, // 🔴 Har qanday turdagi ma'lumot
+    default: null
+  }
 }, {
   timestamps: true
 });

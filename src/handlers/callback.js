@@ -3,15 +3,28 @@ const Product = require('../models/Product');
 const Order = require('../models/Order');
 
 module.exports = (bot) => {
+  
+  const userQuantities = new Map(); 
+
   bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const data = callbackQuery.data;
     const messageId = callbackQuery.message.message_id;
     
     try {
-      const user = await User.findOne({ telegramId: chatId });
+      console.log(`\n📱 Callback query: ${data} (chatId: ${chatId})`);
       
-      if (!user) return;
+      const user = await User.findOne({ telegramId: chatId });
+      if (!user) {
+        console.log('❌ Foydalanuvchi topilmadi');
+        return bot.answerCallbackQuery(callbackQuery.id, { text: 'Xatolik yuz berdi' });
+      }
+      
+      
+      if (!userQuantities.has(chatId)) {
+        userQuantities.set(chatId, {});
+      }
+      const quantities = userQuantities.get(chatId);
       
       
       if (data.startsWith('product_')) {
@@ -19,24 +32,15 @@ module.exports = (bot) => {
         const product = await Product.findById(productId);
         
         if (!product) {
-          bot.answerCallbackQuery(callbackQuery.id, { text: 'Mahsulot topilmadi' });
-          return;
+          return bot.answerCallbackQuery(callbackQuery.id, { text: 'Mahsulot topilmadi' });
         }
         
-        user.tempData = {
-          selectedProduct: productId,
-          quantity: 1
-        };
-        await user.save();
         
-        let message = `🍔 ${product.name}\n\n`;
-        message += `💰 Narxi: ${product.price} so'm\n`;
+        quantities[productId] = 1;
+        userQuantities.set(chatId, quantities);
         
-        if (product.description) {
-          message += `📝 ${product.description}\n\n`;
-        }
-        
-        message += `Miqdorni tanlang:`;
+       
+        const message = `🍔 ${product.name}\n💰 ${product.price} so'm`;
         
         if (product.imageId) {
           await bot.sendPhoto(chatId, product.imageId, {
@@ -49,7 +53,7 @@ module.exports = (bot) => {
                   { text: '➕', callback_data: `inc_${productId}` }
                 ],
                 [
-                  { text: '🛒 Savatga qo\'shish', callback_data: `add_cart_${productId}_1` }
+                  { text: '🛒 Savatga', callback_data: `add_cart_${productId}_1` }
                 ],
                 [
                   { text: '⬅️ Ortga', callback_data: 'back_products' }
@@ -67,7 +71,7 @@ module.exports = (bot) => {
                   { text: '➕', callback_data: `inc_${productId}` }
                 ],
                 [
-                  { text: '🛒 Savatga qo\'shish', callback_data: `add_cart_${productId}_1` }
+                  { text: '🛒 Savatga', callback_data: `add_cart_${productId}_1` }
                 ],
                 [
                   { text: '⬅️ Ortga', callback_data: 'back_products' }
@@ -77,28 +81,72 @@ module.exports = (bot) => {
           });
         }
         
-        bot.answerCallbackQuery(callbackQuery.id);
+        return bot.answerCallbackQuery(callbackQuery.id);
       }
       
-     
+      
       else if (data.startsWith('dec_')) {
         const productId = data.replace('dec_', '');
-        let quantity = user.tempData?.quantity || 1;
+        const currentQty = quantities[productId] || 1;
         
-        if (quantity > 1) {
-          quantity--;
-          user.tempData.quantity = quantity;
-          await user.save();
+        if (currentQty > 1) {
+          quantities[productId] = currentQty - 1;
+          userQuantities.set(chatId, quantities);
           
+          console.log(`Miqdor kamaydi: ${productId} -> ${quantities[productId]}`);
+          
+          
+          try {
+            await bot.editMessageReplyMarkup({
+              inline_keyboard: [
+                [
+                  { text: '➖', callback_data: `dec_${productId}` },
+                  { text: quantities[productId].toString(), callback_data: `show_${productId}` },
+                  { text: '➕', callback_data: `inc_${productId}` }
+                ],
+                [
+                  { text: '🛒 Savatga', callback_data: `add_cart_${productId}_${quantities[productId]}` }
+                ],
+                [
+                  { text: '⬅️ Ortga', callback_data: 'back_products' }
+                ]
+              ]
+            }, {
+              chat_id: chatId,
+              message_id: messageId
+            });
+          } catch (editError) {
+            
+            if (!editError.message.includes('message is not modified')) {
+              console.error('Keyboard yangilash xatosi:', editError);
+            }
+          }
+        }
+        
+        return bot.answerCallbackQuery(callbackQuery.id);
+      }
+      
+      
+      else if (data.startsWith('inc_')) {
+        const productId = data.replace('inc_', '');
+        const currentQty = quantities[productId] || 1;
+        
+        quantities[productId] = currentQty + 1;
+        userQuantities.set(chatId, quantities);
+        
+        console.log(`Miqdor oshdi: ${productId} -> ${quantities[productId]}`);
+        
+        
+        try {
           await bot.editMessageReplyMarkup({
             inline_keyboard: [
               [
                 { text: '➖', callback_data: `dec_${productId}` },
-                { text: quantity.toString(), callback_data: `show_${productId}` },
+                { text: quantities[productId].toString(), callback_data: `show_${productId}` },
                 { text: '➕', callback_data: `inc_${productId}` }
               ],
               [
-                { text: '🛒 Savatga qo\'shish', callback_data: `add_cart_${productId}_${quantity}` }
+                { text: '🛒 Savatga', callback_data: `add_cart_${productId}_${quantities[productId]}` }
               ],
               [
                 { text: '⬅️ Ortga', callback_data: 'back_products' }
@@ -108,60 +156,41 @@ module.exports = (bot) => {
             chat_id: chatId,
             message_id: messageId
           });
+        } catch (editError) {
+          
+          if (!editError.message.includes('message is not modified')) {
+            console.error('Keyboard yangilash xatosi:', editError);
+          }
         }
         
-        bot.answerCallbackQuery(callbackQuery.id);
+        return bot.answerCallbackQuery(callbackQuery.id);
       }
       
-      
-      else if (data.startsWith('inc_')) {
-        const productId = data.replace('inc_', '');
-        let quantity = user.tempData?.quantity || 1;
-        
-        quantity++;
-        user.tempData.quantity = quantity;
-        await user.save();
-        
-        await bot.editMessageReplyMarkup({
-          inline_keyboard: [
-            [
-              { text: '➖', callback_data: `dec_${productId}` },
-              { text: quantity.toString(), callback_data: `show_${productId}` },
-              { text: '➕', callback_data: `inc_${productId}` }
-            ],
-            [
-              { text: '🛒 Savatga qo\'shish', callback_data: `add_cart_${productId}_${quantity}` }
-            ],
-            [
-              { text: '⬅️ Ortga', callback_data: 'back_products' }
-            ]
-          ]
-        }, {
-          chat_id: chatId,
-          message_id: messageId
-        });
-        
-        bot.answerCallbackQuery(callbackQuery.id);
-      }
-      
-      
+    
       else if (data.startsWith('add_cart_')) {
         const parts = data.replace('add_cart_', '').split('_');
         const productId = parts[0];
-        const quantity = parseInt(parts[1]);
+        const quantity = parseInt(parts[1]) || 1;
         
         const product = await Product.findById(productId);
         
         if (!product) {
-          bot.answerCallbackQuery(callbackQuery.id, { text: 'Mahsulot topilmadi' });
-          return;
+          return bot.answerCallbackQuery(callbackQuery.id, { text: 'Mahsulot topilmadi' });
         }
         
-        const existingItemIndex = user.cart.findIndex(item => item.productId === productId);
         
-        if (existingItemIndex !== -1) {
-          user.cart[existingItemIndex].quantity += quantity;
+        if (!user.cart) {
+          user.cart = [];
+        }
+        
+        
+        const existingIndex = user.cart.findIndex(item => item.productId === productId);
+        
+        if (existingIndex !== -1) {
+          
+          user.cart[existingIndex].quantity += quantity;
         } else {
+          
           user.cart.push({
             productId: productId,
             name: product.name,
@@ -170,21 +199,91 @@ module.exports = (bot) => {
           });
         }
         
-        user.tempData = null;
         await user.save();
         
-        bot.answerCallbackQuery(callbackQuery.id, {
+        
+        delete quantities[productId];
+        userQuantities.set(chatId, quantities);
+        
+        
+        try {
+          await bot.deleteMessage(chatId, messageId);
+        } catch (deleteError) {
+          console.log('Xabarni o\'chirishda xato:', deleteError);
+        }
+        
+        return bot.answerCallbackQuery(callbackQuery.id, {
           text: `✅ ${product.name} savatga ${quantity} ta qo'shildi!`
         });
+      }
+      
+      
+      else if (data === 'back_products') {
+        const products = await Product.find({ isActive: true });
         
-        bot.deleteMessage(chatId, messageId);
+        const inlineKeyboard = products.map(product => [
+          {
+            text: `${product.name} - ${product.price} so'm`,
+            callback_data: `product_${product._id}`
+          }
+        ]);
+        
+        try {
+          await bot.editMessageText('🍔 Mahsulotlar:', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+              inline_keyboard: inlineKeyboard
+            }
+          });
+        } catch (editError) {
+          console.error('Ortga qaytish xatosi:', editError);
+        }
+        
+        return bot.answerCallbackQuery(callbackQuery.id);
+      }
+      
+      
+      else if (data === 'view_cart') {
+        if (!user.cart || user.cart.length === 0) {
+          return bot.answerCallbackQuery(callbackQuery.id, { text: '📭 Savatingiz bo\'sh' });
+        }
+        
+        let message = '🛒 Savatingiz:\n\n';
+        let total = 0;
+        
+        user.cart.forEach((item, index) => {
+          const itemTotal = item.price * item.quantity;
+          message += `${index + 1}. ${item.name}\n   ${item.quantity} x ${item.price} = ${itemTotal} so'm\n\n`;
+          total += itemTotal;
+        });
+        
+        message += `💰 Umumiy summa: ${total} so'm`;
+        
+        
+        try {
+          await bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '✅ Buyurtma berish', callback_data: 'checkout_order' }],
+                [{ text: '🗑 Savatni tozalash', callback_data: 'clear_cart' }],
+                [{ text: '⬅️ Ortga', callback_data: 'back_to_main' }]
+              ]
+            }
+          });
+        } catch (editError) {
+          console.error('Savatni ko\'rsatish xatosi:', editError);
+        }
+        
+        return bot.answerCallbackQuery(callbackQuery.id);
       }
       
       
       else if (data === 'checkout_order') {
-        if (user.cart.length === 0) {
-          bot.answerCallbackQuery(callbackQuery.id, { text: 'Savat bo\'sh!' });
-          return;
+        if (!user.cart || user.cart.length === 0) {
+          return bot.answerCallbackQuery(callbackQuery.id, { text: 'Savat bo\'sh!' });
         }
         
         let total = 0;
@@ -196,13 +295,20 @@ module.exports = (bot) => {
         user.tempData = { checkoutTotal: total };
         await user.save();
         
+        
+        try {
+          await bot.deleteMessage(chatId, messageId);
+        } catch (deleteError) {
+          console.log('Xabarni o\'chirishda xato:', deleteError);
+        }
+        
         bot.sendMessage(chatId, 
           `💰 BUYURTMA SUMMASI: ${total} so'm\n\n` +
           `To'lov miqdorini kiriting (so'mda):\n` +
           `Masalan: ${total}`
         );
         
-        bot.answerCallbackQuery(callbackQuery.id);
+        return bot.answerCallbackQuery(callbackQuery.id);
       }
       
       
@@ -210,69 +316,103 @@ module.exports = (bot) => {
         user.cart = [];
         await user.save();
         
-        bot.answerCallbackQuery(callbackQuery.id, { text: '✅ Savat tozalandi!' });
-        
-        await bot.editMessageText('🛒 Savatingiz tozalandi.', {
-          chat_id: chatId,
-          message_id: messageId
-        });
-      }
-      
-      
-      else if (data === 'back_products' || data === 'back_to_main') {
-        const products = await Product.find({ isActive: true });
-        
-        const inlineKeyboard = products.map(product => {
-          return [{
-            text: `${product.name} - ${product.price} so'm`,
-            callback_data: `product_${product._id}`
-          }];
-        });
-        
-        await bot.editMessageText('🍔 Bizning mahsulotlarimiz:', {
-          chat_id: chatId,
-          message_id: messageId,
-          reply_markup: {
-            inline_keyboard: inlineKeyboard
-          }
-        });
-        
-        bot.answerCallbackQuery(callbackQuery.id);
-      }
-      
-      
-      else if (data.startsWith('admin_delete_')) {
-        if (!user.isAdmin) {
-          bot.answerCallbackQuery(callbackQuery.id, { text: 'Ruxsat yo\'q!' });
-          return;
-        }
-        
-        const productId = data.replace('admin_delete_', '');
-        const product = await Product.findByIdAndDelete(productId);
-        
-        if (product) {
-          await bot.editMessageText(`✅ "${product.name}" o'chirildi!`, {
+        try {
+          await bot.editMessageText('🛒 Savatingiz tozalandi.', {
             chat_id: chatId,
             message_id: messageId
           });
+        } catch (editError) {
+          console.error('Savat tozalash xatosi:', editError);
         }
         
-        bot.answerCallbackQuery(callbackQuery.id);
+        return bot.answerCallbackQuery(callbackQuery.id, { text: '✅ Savat tozalandi!' });
+      }
+      
+    
+      else if (data === 'back_to_main') {
+        try {
+          await bot.editMessageText('Asosiy menyuga qaytdingiz.', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+              keyboard: [
+                [{ text: '🍔 Mahsulotlar' }, { text: '🛒 Savat' }],
+                [{ text: '📞 Aloqa' }]
+              ],
+              resize_keyboard: true
+            }
+          });
+        } catch (editError) {
+          console.error('Asosiy menyuga qaytish xatosi:', editError);
+        }
+        
+        return bot.answerCallbackQuery(callbackQuery.id);
       }
       
       
-      else if (data === 'admin_cancel') {
-        await bot.editMessageText('❌ Amal bekor qilindi.', {
-          chat_id: chatId,
-          message_id: messageId
-        });
+      else if (data.startsWith('delete_product_')) {
+        if (!user.isAdmin) {
+          return bot.answerCallbackQuery(callbackQuery.id, { text: 'Ruxsat yo\'q!' });
+        }
         
-        bot.answerCallbackQuery(callbackQuery.id);
+        const productId = data.replace('delete_product_', '');
+        const product = await Product.findById(productId);
+        
+        if (product) {
+          product.isActive = false;
+          await product.save();
+          
+          try {
+            await bot.editMessageText(`✅ "${product.name}" o'chirildi!`, {
+              chat_id: chatId,
+              message_id: messageId
+            });
+          } catch (editError) {
+            console.error('Mahsulot o\'chirish xatosi:', editError);
+          }
+        }
+        
+        return bot.answerCallbackQuery(callbackQuery.id, { text: 'Mahsulot o\'chirildi!' });
+      }
+      
+      
+      else if (data === 'cancel_delete') {
+        try {
+          await bot.editMessageText('❌ Bekor qilindi.', {
+            chat_id: chatId,
+            message_id: messageId
+          });
+        } catch (editError) {
+          console.error('Bekor qilish xatosi:', editError);
+        }
+        
+        return bot.answerCallbackQuery(callbackQuery.id);
+      }
+      
+      
+      else {
+        console.log(`Noma'lum callback: ${data}`);
+        return bot.answerCallbackQuery(callbackQuery.id, { text: 'Noma\'lum amal' });
       }
       
     } catch (error) {
-      console.error('Callback handler xatosi:', error);
-      bot.answerCallbackQuery(callbackQuery.id, { text: 'Xatolik yuz berdi!' });
+      console.error('❌ Callback handler xatosi:', error.message);
+      
+     
+      if (error.message.includes('message is not modified')) {
+        console.log('⚠️ Xuddi shu keyboard, xato e\'tiborsiz qoldirildi');
+        try {
+          await bot.answerCallbackQuery(callbackQuery.id);
+        } catch (answerError) {
+          console.log('Answer callback xatosi:', answerError);
+        }
+      } else {
+        try {
+          await bot.answerCallbackQuery(callbackQuery.id, { text: 'Xatolik yuz berdi!' });
+        } catch (answerError) {
+          console.log('Answer callback xatosi:', answerError);
+        }
+      }
     }
   });
 
@@ -305,7 +445,7 @@ module.exports = (bot) => {
         await order.save();
         
         user.cart = [];
-        user.state = 'main_menu';
+        user.state = '';
         user.tempData = null;
         await user.save();
         
